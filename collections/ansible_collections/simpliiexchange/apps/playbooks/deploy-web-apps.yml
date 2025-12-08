@@ -7,11 +7,12 @@
     - "{{ inventory_dir }}/../group_vars/web/apps.yml"
 
   vars:
-    repo_url: "git@github.com:simpliiexchange/simpliiexchange-web.git"
-
-    # separate roots for each env
-    repo_root_test: "/var/www/simpliiexchange-web-test"
-    repo_root_prod: "/var/www/simpliiexchange-web-prod"
+    # Base directory where app repos live (per app/env subfolder)
+    apps_base_dir: "/var/www"
+    # Defaults if not overridden per app
+    default_package_manager: "pnpm"
+    default_repo_branch_test: "dev"
+    default_repo_branch_prod: "main"
 
     # override with: -e "target_env=test" or -e "target_env=prod"
     target_env: "test"
@@ -24,59 +25,117 @@
         msg: "target_env must be 'test' or 'prod'"
       when: target_env not in ['test', 'prod']
 
-    - name: Set repo_root based on target_env
-      ansible.builtin.set_fact:
-        repo_root: "{{ repo_root_test if target_env == 'test' else repo_root_prod }}"
-
     - name: Select apps by environment
       ansible.builtin.set_fact:
         selected_apps: "{{ apps | selectattr('env', 'equalto', target_env) | list }}"
+
+    - name: Ensure each app has a repo_url defined
+      ansible.builtin.assert:
+        that:
+          - item.repo_url is defined
+          - item.repo_url | length > 0
+        fail_msg: "Missing repo_url for app {{ item.name }} (env {{ item.env }}). Please set repo_url in group_vars/web/apps.yml."
+      loop: "{{ selected_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
 
     - name: Compute unique app names for build step
       ansible.builtin.set_fact:
         unique_app_names: "{{ selected_apps | map(attribute='name') | unique | list }}"
 
+    - name: Prepare per-app metadata (repo roots, branches, package managers)
+      ansible.builtin.set_fact:
+        prepared_apps: []
+
+    - name: Build prepared app list
+      ansible.builtin.set_fact:
+        prepared_apps: "{{ prepared_apps + [ app_obj ] }}"
+      vars:
+        pkg_mgr: "{{ item.package_manager | default(default_package_manager) }}"
+        app_obj:
+          name: "{{ item.name }}"
+          env: "{{ item.env }}"
+          domain: "{{ item.domain }}"
+          port: "{{ item.port }}"
+          repo_url: "{{ item.repo_url }}"
+          repo_root: "{{ item.repo_root | default(apps_base_dir ~ '/' ~ item.name ~ '-' ~ item.env) }}"
+          repo_branch: "{{ item.repo_branch | default(default_repo_branch_test if item.env == 'test' else default_repo_branch_prod) }}"
+          package_manager: "{{ pkg_mgr }}"
+          build_command: "{{ item.build_command | default(pkg_mgr == 'pnpm' and 'pnpm run build' or 'npm run build') }}"
+      loop: "{{ selected_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+
+    - name: Resolve PM2 template path
+      ansible.builtin.set_fact:
+        pm2_template_path: "{{ lookup('ansible.builtin.first_found', params) }}"
+      vars:
+        params:
+          files:
+            - "{{ playbook_dir }}/templates/pm2-ecosystem-app.js.j2"
+            - "{{ playbook_dir }}/../templates/pm2-ecosystem-app.js.j2"
+            - "{{ playbook_dir }}/../../templates/pm2-ecosystem-app.js.j2"
+      failed_when: pm2_template_path is not defined or pm2_template_path == ""
+
   tasks:
-    # ---------- REPO PER ENV ----------
+    # ---------- REPO PER APP/ENV ----------
 
     - name: Ensure base directory exists for this env
       ansible.builtin.file:
-        path: "{{ repo_root }}"
+        path: "{{ apps_base_dir }}"
         state: directory
         owner: "{{ pm2_user }}"
         group: "{{ pm2_user }}"
         mode: "0755"
 
-    - name: Checkout monorepo for this env
+    - name: Ensure repo directory exists for each app/env
+      ansible.builtin.file:
+        path: "{{ item.repo_root }}"
+        state: directory
+        owner: "{{ pm2_user }}"
+        group: "{{ pm2_user }}"
+        mode: "0755"
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.repo_root }}"
+
+    - name: Checkout app repo for each app/env
       become_user: "{{ pm2_user }}"
       ansible.builtin.git:
-        repo: "{{ repo_url }}"
-        dest: "{{ repo_root }}"
-        version: main
+        repo: "{{ item.repo_url }}"
+        dest: "{{ item.repo_root }}"
+        version: "{{ item.repo_branch }}"
         accept_hostkey: yes
         force: yes
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
 
     - name: Install pnpm globally (if needed)
       ansible.builtin.command: npm install -g pnpm
       args:
         creates: /usr/local/bin/pnpm
 
-    - name: Install monorepo dependencies with pnpm
+    - name: Install dependencies per app/env
       become_user: "{{ pm2_user }}"
-      ansible.builtin.command: pnpm install --prod=false
+      ansible.builtin.command: >
+        {{ 'pnpm install --prod=false' if item.package_manager == 'pnpm' else 'npm install' }}
       args:
-        chdir: "{{ repo_root }}"
+        chdir: "{{ item.repo_root }}"
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
 
-    # ---------- BUILD ONCE PER APP NAME (PER ENV REPO) ----------
+    # ---------- BUILD PER APP/ENV ----------
 
     - name: Build each app for this env
       become_user: "{{ pm2_user }}"
-      ansible.builtin.command: "pnpm --filter {{ item }} build"
+      ansible.builtin.command: "{{ item.build_command }}"
       args:
-        chdir: "{{ repo_root }}"
-      loop: "{{ unique_app_names }}"
+        chdir: "{{ item.repo_root }}"
+      loop: "{{ prepared_apps }}"
       loop_control:
-        label: "{{ item }}"
+        label: "{{ item.name }}-{{ item.env }}"
 
     # ---------- PM2 CONFIG & RUNTIME PER APP+ENV ----------
 
@@ -88,20 +147,37 @@
 
     - name: Create PM2 ecosystem config for each app/env
       ansible.builtin.template:
-        src: "../templates/pm2-ecosystem-app.js.j2"
+        src: "{{ pm2_template_path }}"
         dest: "/etc/pm2/{{ item.name }}-{{ item.env }}.ecosystem.config.js"
         mode: "0644"
-      loop: "{{ selected_apps }}"
+      loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
 
-    - name: Configure PM2 to start on boot for {{ pm2_user }}
-      become_user: "{{ pm2_user }}"
+    - name: Configure PM2 startup for {{ pm2_user }} (systemd unit)
+      become: true
+      become_user: root
       ansible.builtin.command: >
         pm2 startup systemd -u {{ pm2_user }} --hp /home/{{ pm2_user }}
       register: pm2_startup
       failed_when: pm2_startup.rc not in [0, 1]
-      changed_when: "'Startup script' in pm2_startup.stdout or pm2_startup.rc == 0"
+      changed_when: "'systemd' in pm2_startup.stdout or pm2_startup.rc == 0"
+
+    - name: Check pm2 service unit file exists
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/pm2-{{ pm2_user }}.service"
+      register: pm2_service_unit
+
+    - name: Reload systemd if pm2 unit present
+      ansible.builtin.command: systemctl daemon-reload
+      when: pm2_service_unit.stat.exists
+
+    - name: Ensure pm2-{{ pm2_user }} service is enabled and running
+      ansible.builtin.systemd:
+        name: "pm2-{{ pm2_user }}"
+        enabled: true
+        state: started
+      when: pm2_service_unit.stat.exists
 
     # --- IMPORTANT: nuke old processes so new cwd/repo_root is used ---
 
@@ -111,7 +187,7 @@
       register: pm2_delete_result
       failed_when: pm2_delete_result.rc not in [0, 1]
       changed_when: pm2_delete_result.rc == 0
-      loop: "{{ selected_apps }}"
+      loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
 
@@ -119,7 +195,7 @@
       become_user: "{{ pm2_user }}"
       ansible.builtin.command: >
         pm2 start /etc/pm2/{{ item.name }}-{{ item.env }}.ecosystem.config.js
-      loop: "{{ selected_apps }}"
+      loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
 
@@ -134,7 +210,7 @@
         src: "../templates/nginx-app.conf.j2"
         dest: "/etc/nginx/sites-available/{{ item.name }}-{{ item.env }}.conf"
         mode: "0644"
-      loop: "{{ selected_apps }}"
+      loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.domain }} ({{ item.env }})"
 
@@ -144,7 +220,7 @@
         dest: "/etc/nginx/sites-enabled/{{ item.name }}-{{ item.env }}.conf"
         state: link
         force: true
-      loop: "{{ selected_apps }}"
+      loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.domain }} ({{ item.env }})"
 

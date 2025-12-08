@@ -1,0 +1,10 @@
+- import_playbook: bootstrap-all.yml
+- import_playbook: setup-ansible.yml
+- import_playbook: test-orchestration.yml
+- import_playbook: setup-nginx.yml
+- import_playbook: setup-certbot.yml
+- import_playbook: setup-node-pm2.yml
+- import_playbook: setup-dotnet.yml
+- import_playbook: setup-postgres.yml
+- import_playbook: enable-postgres-remote.yml
+- import_playbook: letsencrypt-all-domains.yml

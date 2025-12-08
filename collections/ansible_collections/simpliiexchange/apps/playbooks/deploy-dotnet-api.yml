@@ -5,7 +5,7 @@
 
   vars:
     # Git repo for the API
-    repo_url: "git@github.com:simpliiexchange/simpliiexchange-backend.git"
+    repo_url: "git@github.com:simpliiexchange/simpliiexchange.git"
 
     # Separate roots per environment
     repo_root_test: "/var/www/simpliiexchange-api-test"
@@ -14,8 +14,9 @@
     # User that owns the files and runs the service
     deploy_user: "ansible"
 
-    # API project/binary names
-    api_project_file: "Simpliiexchange.csproj"
+    # API solution/project layout
+    api_solution_file: "Simpliiexchange.sln"
+    api_project_path: "Simpliiexchange/Simpliiexchange.csproj"
     api_binary_name: "Simpliiexchange.dll"
 
     # Subdir under repo_root where we publish
@@ -119,14 +120,14 @@
     # ---------- BUILD / PUBLISH ----------
     - name: Restore .NET dependencies
       become_user: "{{ deploy_user }}"
-      ansible.builtin.command: dotnet restore {{ api_project_file }}
+      ansible.builtin.command: dotnet restore {{ api_solution_file }}
       args:
         chdir: "{{ repo_root }}"
 
     - name: Publish .NET API (Release)
       become_user: "{{ deploy_user }}"
       ansible.builtin.command: >
-        dotnet publish {{ api_project_file }} -c Release -o "{{ publish_dir }}"
+        dotnet publish {{ api_project_path }} -c Release -o "{{ publish_dir }}"
       args:
         chdir: "{{ repo_root }}"
 

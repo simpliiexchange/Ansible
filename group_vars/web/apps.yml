@@ -2,15 +2,21 @@ apps:
   # ---------- TEST ENVS ----------
   - name: admin
     env: test
-    domain: admin.test.simpliiexchange.com
+    domain: admin-test.simpliiexchange.com
     port: 3101
+    repo_url: "git@github.com:simpliiexchange/simpliiexchange-admin.git"
+    repo_branch: "dev"
 
   # ---------- PROD ENVS----------
   - name: admin
     env: prod
     domain: admin.simpliiexchange.com
     port: 3201
+    repo_url: "git@github.com:simpliiexchange/simpliiexchange-admin.git"
+    repo_branch: "main"
   - name: landing
     env: prod
     domain: simpliiexchange.com
     port: 3200
+    repo_url: "git@github.com:simpliiexchange/simpliiexchange-web.git"
+    repo_branch: "main"

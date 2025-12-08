@@ -1,0 +1,45 @@
+ansible-vault decrypt group_vars/all/vault.yml
+ansible-vault encrypt group_vars/all/vault.yml
+
+ezhZmen0
+
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/add-root-ssh-key.yml -u root -k -K
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/bootstrap-user.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/setup-nginx.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/setup-certbot.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/setup-node-pm2.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/setup-dotnet.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/setup-postgres.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/enable-postgres-remote.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/setup-ansible.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/db/playbooks/create-simpliiexchange-test-db.yml --ask-vault-pass
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/db/playbooks/create-simpliiexchange-prod-db.yml --ask-vault-pass
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/db/playbooks/grant-public-schema.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/apps/playbooks/deploy-dotnet-api.yml -e "target_env=test"
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/apps/playbooks/deploy-dotnet-api.yml -e "target_env=prod"
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/apps/playbooks/letsencrypt-api.yml -e "target_env=test"
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/apps/playbooks/letsencrypt-api.yml -e "target_env=prod"
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/apps/playbooks/deploy-web-apps.yml -e "target_env=test"
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/apps/playbooks/deploy-web-apps.yml -e "target_env=prod"
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/platform/playbooks/letsencrypt-all-domains.yml
+ansible-playbook -i inventory/hosts.ini collections/ansible_collections/simpliiexchange/apps/playbooks/setup-ansible-ci.yml
+
+
+NEXT_PUBLIC_API - https://api-test.simpliiexchange.com
+NEXT_PUBLIC_API - https://api-test.simpliiexchange.com
+NEXT_PUBLIC_CLOUDINARY_APISECRET - Pmk4o9K85yEuMLUS_TYxaZvs_zU
+NEXT_PUBLIC_CLOUDINARY_APIKEY - 794919946475765
+NEXT_PUBLIC_CLOUDINARY_NAME - dsccsxu0u
+NEXT_PUBLIC_CLOUDINARY_NAME - dsccsxu0u
+NEXT_PUBLIC_CLOUDINARY_APIKEY - 794919946475765
+NEXT_PUBLIC_CLOUDINARY_APISECRET - Pmk4o9K85yEuMLUS_TYxaZvs_zU
+
+
+NEXT_PUBLIC_API - https://api.simpliiexchange.com
+NEXT_PUBLIC_API - https://api.simpliiexchange.com
+NEXT_PUBLIC_CLOUDINARY_APISECRET - Pmk4o9K85yEuMLUS_TYxaZvs_zU
+NEXT_PUBLIC_CLOUDINARY_APIKEY - 794919946475765
+NEXT_PUBLIC_CLOUDINARY_NAME - dsccsxu0u
+NEXT_PUBLIC_CLOUDINARY_NAME - dsccsxu0u
+NEXT_PUBLIC_CLOUDINARY_APIKEY - 794919946475765
+NEXT_PUBLIC_CLOUDINARY_APISECRET - Pmk4o9K85yEuMLUS_TYxaZvs_zU

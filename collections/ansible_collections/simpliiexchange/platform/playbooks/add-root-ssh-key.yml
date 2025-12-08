@@ -1,0 +1,43 @@
+- name: Add local SSH public key to root for initial access
+  hosts: simpliiexchange
+  become: true
+  gather_facts: false
+
+  vars:
+    # Path to your public key on the control machine
+    local_pubkey_path: "~/.ssh/id_rsa.pub"
+    # User to receive the key (default root for first-time bootstrap)
+    target_user: "root"
+
+  pre_tasks:
+    - name: Ensure the local public key exists
+      delegate_to: localhost
+      become: false
+      ansible.builtin.stat:
+        path: "{{ local_pubkey_path | expanduser }}"
+      run_once: true
+      register: pubkey_file
+
+    - name: Fail if local public key is missing
+      delegate_to: localhost
+      become: false
+      ansible.builtin.fail:
+        msg: "Public key not found at {{ local_pubkey_path }}"
+      when: not pubkey_file.stat.exists
+      run_once: true
+
+  tasks:
+    - name: Ensure .ssh directory exists for {{ target_user }}
+      ansible.builtin.file:
+        path: "{{ '/root/.ssh' if target_user == 'root' else '/home/' ~ target_user ~ '/.ssh' }}"
+        state: directory
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: "0700"
+
+    - name: Add local public key to authorized_keys for {{ target_user }}
+      ansible.builtin.authorized_key:
+        user: "{{ target_user }}"
+        state: present
+        key: "{{ lookup('file', local_pubkey_path | expanduser) }}"
+        manage_dir: false

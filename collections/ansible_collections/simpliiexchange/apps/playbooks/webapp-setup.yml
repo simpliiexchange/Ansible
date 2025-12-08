@@ -1,0 +1,9 @@
+- import_playbook: deploy-web-apps.yml
+  tags:
+    - deploy
+    - web
+
+- import_playbook: update-web-apps.yml
+  tags:
+    - update
+    - web

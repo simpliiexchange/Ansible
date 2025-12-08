@@ -2,10 +2,10 @@ module.exports = {
   apps: [
     {
       name: "{{ item.name }}-{{ item.env }}",
-      cwd: "{{ repo_root }}/apps/{{ item.name }}",
-      script: "pnpm",
-      args: "start",
-      env_file: "{{ repo_root }}/apps/{{ item.name }}/.env",
+      cwd: "{{ item.repo_root }}",
+      script: "{{ item.package_manager | default('pnpm') }}",
+      args: "{{ 'start' if (item.package_manager | default('pnpm')) == 'pnpm' else 'run start' }}",
+      env_file: "{{ item.repo_root }}/.env",
       env: {
         // You generally want production for test & prod because you're running the built app
         NODE_ENV: "production",

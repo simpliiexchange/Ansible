@@ -7,14 +7,13 @@
     - "{{ apps_vars_file }}"
 
   vars:
-    repo_url: "git@github.com:simpliiexchange/simpliiexchange-web.git"
-    repo_root_test: "/var/www/simpliiexchange-web-test"
-    repo_root_prod: "/var/www/simpliiexchange-web-prod"
+    apps_base_dir: "/var/www"
+    default_package_manager: "pnpm"
     target_env: "test"  # override with -e "target_env=prod"
     pm2_user: "ansible"
     apps_vars_file: "/etc/ansible/cicd/apps.yml"
-    repo_branch_test: "dev"
-    repo_branch_prod: "main"
+    default_repo_branch_test: "dev"
+    default_repo_branch_prod: "main"
 
   pre_tasks:
     - name: Fail if target_env is invalid
@@ -22,77 +21,170 @@
         msg: "target_env must be 'test' or 'prod'"
       when: target_env not in ['test', 'prod']
 
-    - name: Set repo_root based on target_env
-      ansible.builtin.set_fact:
-        repo_root: "{{ repo_root_test if target_env == 'test' else repo_root_prod }}"
-
     - name: Select apps by environment
       ansible.builtin.set_fact:
         selected_apps: "{{ apps | selectattr('env', 'equalto', target_env) | list }}"
 
-    - name: Compute unique app names for build step
+    - name: Ensure each app has a repo_url defined
+      ansible.builtin.assert:
+        that:
+          - item.repo_url is defined
+          - item.repo_url | length > 0
+        fail_msg: "Missing repo_url for app {{ item.name }} (env {{ item.env }}) in apps vars file."
+      loop: "{{ selected_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+
+    - name: Prepare per-app metadata (repo roots, branches, package managers)
       ansible.builtin.set_fact:
-        unique_app_names: "{{ selected_apps | map(attribute='name') | unique | list }}"
+        prepared_apps: []
+
+    - name: Build prepared app list
+      ansible.builtin.set_fact:
+        prepared_apps: "{{ prepared_apps + [ app_obj ] }}"
+      vars:
+        pkg_mgr: "{{ item.package_manager | default(default_package_manager) }}"
+        app_obj:
+          name: "{{ item.name }}"
+          env: "{{ item.env }}"
+          domain: "{{ item.domain }}"
+          port: "{{ item.port }}"
+          repo_url: "{{ item.repo_url }}"
+          repo_root: "{{ item.repo_root | default(apps_base_dir ~ '/' ~ item.name ~ '-' ~ item.env) }}"
+          repo_branch: "{{ item.repo_branch | default(default_repo_branch_test if item.env == 'test' else default_repo_branch_prod) }}"
+          package_manager: "{{ pkg_mgr }}"
+          build_command: "{{ item.build_command | default(pkg_mgr == 'pnpm' and 'pnpm run build' or 'npm run build') }}"
+      loop: "{{ selected_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+
+    - name: Resolve PM2 template path
+      ansible.builtin.set_fact:
+        pm2_template_path: "{{ lookup('ansible.builtin.first_found', params) }}"
+      vars:
+        params:
+          files:
+            - "{{ playbook_dir }}/templates/pm2-ecosystem-app.js.j2"
+            - "{{ playbook_dir }}/../templates/pm2-ecosystem-app.js.j2"
+            - "{{ playbook_dir }}/../../templates/pm2-ecosystem-app.js.j2"
+      failed_when: pm2_template_path is not defined or pm2_template_path == ""
 
   tasks:
     - name: Ensure base directory exists for this env
       ansible.builtin.file:
-        path: "{{ repo_root }}"
+        path: "{{ apps_base_dir }}"
         state: directory
         owner: "{{ pm2_user }}"
         group: "{{ pm2_user }}"
         mode: "0755"
 
-    - name: Update monorepo for this env
+    - name: Ensure repo directory exists for each app/env
+      ansible.builtin.file:
+        path: "{{ item.repo_root }}"
+        state: directory
+        owner: "{{ pm2_user }}"
+        group: "{{ pm2_user }}"
+        mode: "0755"
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.repo_root }}"
+
+    - name: Update repo for each app/env
       become_user: "{{ pm2_user }}"
       ansible.builtin.git:
-        repo: "{{ repo_url }}"
-        dest: "{{ repo_root }}"
-        version: "{{ repo_branch_test if target_env == 'test' else repo_branch_prod }}"
+        repo: "{{ item.repo_url }}"
+        dest: "{{ item.repo_root }}"
+        version: "{{ item.repo_branch }}"
         accept_hostkey: yes
         update: yes
         force: yes
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
 
     - name: Install pnpm globally (if needed)
       ansible.builtin.command: npm install -g pnpm
       args:
         creates: /usr/local/bin/pnpm
 
-    - name: Install monorepo dependencies with pnpm
+    - name: Install dependencies per app/env
       become_user: "{{ pm2_user }}"
-      ansible.builtin.command: pnpm install --prod=false
+      ansible.builtin.command: >
+        {{ 'pnpm install --prod=false' if item.package_manager == 'pnpm' else 'npm install' }}
       args:
-        chdir: "{{ repo_root }}"
+        chdir: "{{ item.repo_root }}"
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
 
     - name: Build each app for this env
       become_user: "{{ pm2_user }}"
-      ansible.builtin.command: "pnpm --filter {{ item }} build"
+      ansible.builtin.command: "{{ item.build_command }}"
       args:
-        chdir: "{{ repo_root }}"
-      loop: "{{ unique_app_names }}"
-      loop_control:
-        label: "{{ item }}"
-
-    - name: Restart app via PM2 (ignore missing)
-      become_user: "{{ pm2_user }}"
-      ansible.builtin.command: pm2 restart {{ item.name }}-{{ item.env }}
-      register: pm2_restart
-      failed_when: pm2_restart.rc not in [0, 1]
-      changed_when: pm2_restart.rc == 0
-      loop: "{{ selected_apps }}"
+        chdir: "{{ item.repo_root }}"
+      loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
-        index_var: restart_idx
 
-    - name: Start app if PM2 restart failed (missing process)
+    - name: Ensure PM2 config directory exists
+      ansible.builtin.file:
+        path: "/etc/pm2"
+        state: directory
+        mode: "0755"
+
+    - name: Configure PM2 startup for {{ pm2_user }} (systemd unit)
+      become: true
+      become_user: root
+      ansible.builtin.command: >
+        pm2 startup systemd -u {{ pm2_user }} --hp /home/{{ pm2_user }}
+      register: pm2_startup
+      failed_when: pm2_startup.rc not in [0, 1]
+      changed_when: "'systemd' in pm2_startup.stdout or pm2_startup.rc == 0"
+
+    - name: Check pm2 service unit file exists
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/pm2-{{ pm2_user }}.service"
+      register: pm2_service_unit
+
+    - name: Reload systemd if pm2 unit present
+      ansible.builtin.command: systemctl daemon-reload
+      when: pm2_service_unit.stat.exists
+
+    - name: Ensure pm2-{{ pm2_user }} service is enabled and running
+      ansible.builtin.systemd:
+        name: "pm2-{{ pm2_user }}"
+        enabled: true
+        state: started
+      when: pm2_service_unit.stat.exists
+
+    - name: Create PM2 ecosystem config for each app/env
+      ansible.builtin.template:
+        src: "{{ pm2_template_path }}"
+        dest: "/etc/pm2/{{ item.name }}-{{ item.env }}.ecosystem.config.js"
+        mode: "0644"
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+
+    # --- IMPORTANT: replace running processes so new cwd/repo_root/env take effect ---
+
+    - name: Delete existing PM2 process for this app/env (if any)
+      become_user: "{{ pm2_user }}"
+      ansible.builtin.command: pm2 delete {{ item.name }}-{{ item.env }}
+      register: pm2_delete_result
+      failed_when: pm2_delete_result.rc not in [0, 1]
+      changed_when: pm2_delete_result.rc == 0
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+
+    - name: Start app processes with PM2 from ecosystem config
       become_user: "{{ pm2_user }}"
       ansible.builtin.command: >
         pm2 start /etc/pm2/{{ item.name }}-{{ item.env }}.ecosystem.config.js
-      when: (pm2_restart.results[start_idx].rc | default(1)) != 0
-      loop: "{{ selected_apps }}"
+      loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
-        index_var: start_idx
 
     - name: Save PM2 process list
       become_user: "{{ pm2_user }}"

@@ -4,12 +4,14 @@
   gather_facts: true
 
   vars:
-    repo_url: "git@github.com:simpliiexchange/simpliiexchange-backend.git"
+    repo_url: "git@github.com:simpliiexchange/simpliiexchange.git"
     repo_root_test: "/var/www/simpliiexchange-api-test"
     repo_root_prod: "/var/www/simpliiexchange-api-prod"
     publish_subdir: "publish"
     service_base_name: "simpliiexchange-api"
-    api_project_file: "Simpliiexchange.csproj"
+    deploy_user: "ansible"
+    api_solution_file: "Simpliiexchange.sln"
+    api_project_path: "Simpliiexchange/Simpliiexchange.csproj"
     target_env: "test"  # override with -e "target_env=prod"
     repo_branch_test: "dev"
     repo_branch_prod: "main"
@@ -35,12 +37,12 @@
       ansible.builtin.file:
         path: "{{ repo_root }}"
         state: directory
-        owner: ansible
-        group: ansible
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
         mode: "0755"
 
     - name: Update API repo for this env
-      become_user: ansible
+      become_user: "{{ deploy_user }}"
       ansible.builtin.git:
         repo: "{{ repo_url }}"
         dest: "{{ repo_root }}"
@@ -50,15 +52,15 @@
         force: yes
 
     - name: Restore .NET dependencies
-      become_user: ansible
-      ansible.builtin.command: dotnet restore {{ api_project_file }}
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.command: dotnet restore {{ api_solution_file }}
       args:
         chdir: "{{ repo_root }}"
 
     - name: Publish .NET API (Release)
-      become_user: ansible
+      become_user: "{{ deploy_user }}"
       ansible.builtin.command: >
-        dotnet publish {{ api_project_file }} -c Release -o "{{ publish_dir }}"
+        dotnet publish {{ api_project_path }} -c Release -o "{{ publish_dir }}"
       args:
         chdir: "{{ repo_root }}"
 

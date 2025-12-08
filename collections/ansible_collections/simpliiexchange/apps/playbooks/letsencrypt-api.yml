@@ -6,7 +6,7 @@
   vars:
     # Domains per environment
     api_domains:
-      test: "api.test.simpliiexchange.com"
+      test: "api-test.simpliiexchange.com"
       prod: "api.simpliiexchange.com"
 
     # test | prod (override with: -e "target_env=test")

@@ -1,0 +1,24 @@
+- import_playbook: ../db/playbooks/create-simpliiexchange-test-db.yml
+  tags:
+    - db
+    - db_test
+
+- import_playbook: ../db/playbooks/create-simpliiexchange-prod-db.yml
+  tags:
+    - db
+    - db_prod
+
+- import_playbook: deploy-dotnet-api.yml
+  tags:
+    - deploy
+    - api
+
+- import_playbook: update-dotnet-api.yml
+  tags:
+    - update
+    - api
+
+- import_playbook: letsencrypt-api.yml
+  tags:
+    - certs
+    - api

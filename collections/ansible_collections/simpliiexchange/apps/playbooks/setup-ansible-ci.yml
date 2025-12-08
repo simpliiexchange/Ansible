@@ -31,6 +31,30 @@
         group: root
         mode: "0644"
 
+    - name: Ensure CI/CD templates directory exists
+      ansible.builtin.file:
+        path: "{{ ci_dir }}/templates"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy PM2 ecosystem template for CI
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../templates/pm2-ecosystem-app.js.j2"
+        dest: "{{ ci_dir }}/templates/pm2-ecosystem-app.js.j2"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Copy Nginx app template for CI
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../templates/nginx-app.conf.j2"
+        dest: "{{ ci_dir }}/templates/nginx-app.conf.j2"
+        owner: root
+        group: root
+        mode: "0644"
+
     - name: Copy apps variables for CI (env/app definitions)
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../../../../../group_vars/web/apps.yml"
