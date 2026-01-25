@@ -89,6 +89,24 @@
       loop_control:
         label: "{{ item.repo_root }}"
 
+    - name: Ensure .ssh directory exists for pm2_user
+      ansible.builtin.file:
+        path: "/home/{{ pm2_user }}/.ssh"
+        state: directory
+        owner: "{{ pm2_user }}"
+        group: "{{ pm2_user }}"
+        mode: "0700"
+
+    - name: Copy root's SSH key to pm2_user for GitHub access
+      ansible.builtin.copy:
+        src: "/root/.ssh/id_rsa"
+        dest: "/home/{{ pm2_user }}/.ssh/id_rsa"
+        owner: "{{ pm2_user }}"
+        group: "{{ pm2_user }}"
+        mode: "0600"
+        remote_src: yes
+      ignore_errors: yes
+
     - name: Update repo for each app/env
       become_user: "{{ pm2_user }}"
       ansible.builtin.git:
@@ -98,6 +116,7 @@
         accept_hostkey: yes
         update: yes
         force: yes
+        key_file: "/home/{{ pm2_user }}/.ssh/id_rsa"
       loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
