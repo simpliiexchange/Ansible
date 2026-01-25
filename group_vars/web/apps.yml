@@ -6,6 +6,7 @@ apps:
     port: 3101
     repo_url: "git@github.com:simpliiexchange/simpliiexchange-admin.git"
     repo_branch: "dev"
+    ssh_key_file: "/root/.ssh/id_rsa_admin"
 
   # ---------- PROD ENVS----------
   - name: admin
@@ -14,9 +15,11 @@ apps:
     port: 3201
     repo_url: "git@github.com:simpliiexchange/simpliiexchange-admin.git"
     repo_branch: "main"
+    ssh_key_file: "/root/.ssh/id_rsa_admin"
   - name: landing
     env: prod
     domain: simpliiexchange.com
     port: 3200
     repo_url: "git@github.com:simpliiexchange/simpliiexchange-web.git"
     repo_branch: "main"
+    ssh_key_file: "/root/.ssh/id_rsa_web"

@@ -44,10 +44,12 @@
         prepared_apps: "{{ prepared_apps + [ app_obj ] }}"
       vars:
         pkg_mgr: "{{ item.package_manager | default(default_package_manager) }}"
+        default_ssh_key: "/root/.ssh/id_rsa"
         app_obj:
           name: "{{ item.name }}"
           env: "{{ item.env }}"
           domain: "{{ item.domain }}"
+          ssh_key_file: "{{ item.ssh_key_file | default(default_ssh_key) }}"
           port: "{{ item.port }}"
           repo_url: "{{ item.repo_url }}"
           repo_root: "{{ item.repo_root | default(apps_base_dir ~ '/' ~ item.name ~ '-' ~ item.env) }}"
@@ -97,14 +99,18 @@
         group: "{{ pm2_user }}"
         mode: "0700"
 
-    - name: Copy root's SSH key to pm2_user for GitHub access
+    - name: Copy SSH keys to pm2_user for GitHub access
       ansible.builtin.copy:
-        src: "/root/.ssh/id_rsa"
-        dest: "/home/{{ pm2_user }}/.ssh/id_rsa"
+        src: "{{ item }}"
+        dest: "/home/{{ pm2_user }}/.ssh/{{ item | basename }}"
         owner: "{{ pm2_user }}"
         group: "{{ pm2_user }}"
         mode: "0600"
         remote_src: yes
+      loop:
+        - "/root/.ssh/id_rsa"
+        - "/root/.ssh/id_rsa_admin"
+        - "/root/.ssh/id_rsa_web"
       ignore_errors: yes
 
     - name: Update repo for each app/env
@@ -116,7 +122,7 @@
         accept_hostkey: yes
         update: yes
         force: yes
-        key_file: "/home/{{ pm2_user }}/.ssh/id_rsa"
+        key_file: "/home/{{ pm2_user }}/.ssh/{{ item.ssh_key_file | basename }}"
       loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
