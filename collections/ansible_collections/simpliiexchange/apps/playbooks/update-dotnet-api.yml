@@ -15,6 +15,7 @@
     target_env: "test"  # override with -e "target_env=prod"
     repo_branch_test: "dev"
     repo_branch_prod: "main"
+    ssh_key_file: "/root/.ssh/id_rsa_backend"
 
   pre_tasks:
     - name: Fail if target_env is invalid
@@ -33,6 +34,23 @@
         publish_dir: "{{ repo_root }}/{{ publish_subdir }}"
 
   tasks:
+    - name: Ensure .ssh directory exists for deploy_user
+      ansible.builtin.file:
+        path: "/home/{{ deploy_user }}/.ssh"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0700"
+
+    - name: Copy SSH key to deploy_user for GitHub access
+      ansible.builtin.copy:
+        src: "{{ ssh_key_file }}"
+        dest: "/home/{{ deploy_user }}/.ssh/{{ ssh_key_file | basename }}"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+        remote_src: yes
+
     - name: Ensure repo_root exists
       ansible.builtin.file:
         path: "{{ repo_root }}"
@@ -50,6 +68,7 @@
         accept_hostkey: yes
         update: yes
         force: yes
+        key_file: "/home/{{ deploy_user }}/.ssh/{{ ssh_key_file | basename }}"
 
     - name: Restore .NET dependencies
       become_user: "{{ deploy_user }}"
