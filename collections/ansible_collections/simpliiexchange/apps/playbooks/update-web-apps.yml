@@ -142,6 +142,25 @@
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
 
+    - name: Stop PM2 process before build (to release file locks)
+      become_user: "{{ pm2_user }}"
+      ansible.builtin.command: pm2 stop {{ item.name }}-{{ item.env }}
+      register: pm2_stop_result
+      failed_when: pm2_stop_result.rc not in [0, 1]
+      changed_when: pm2_stop_result.rc == 0
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+
+    - name: Remove .next build directory (for Next.js apps)
+      ansible.builtin.file:
+        path: "{{ item.repo_root }}/.next"
+        state: absent
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+      ignore_errors: yes
+
     - name: Build each app for this env
       become_user: "{{ pm2_user }}"
       ansible.builtin.command: "{{ item.build_command }}"
