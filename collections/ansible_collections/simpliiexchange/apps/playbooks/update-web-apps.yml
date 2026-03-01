@@ -134,12 +134,10 @@
 
     - name: Install dependencies per app/env
       become_user: "{{ pm2_user }}"
-      ansible.builtin.command: >
-        {{ 'pnpm install --prod=false' if item.package_manager == 'pnpm' else 'npm install' }}
+      ansible.builtin.shell: >
+        CI=true {{ 'pnpm install --prod=false' if item.package_manager == 'pnpm' else 'npm install' }}
       args:
         chdir: "{{ item.repo_root }}"
-      environment:
-        CI: "true"
       loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
@@ -156,12 +154,9 @@
 
     - name: Build each app for this env
       become_user: "{{ pm2_user }}"
-      ansible.builtin.command: "{{ item.build_command }}"
+      ansible.builtin.shell: "CI=true NODE_ENV=production {{ item.build_command }}"
       args:
         chdir: "{{ item.repo_root }}"
-      environment:
-        CI: "true"
-        NODE_ENV: "production"
       loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
