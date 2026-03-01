@@ -135,9 +135,17 @@
     - name: Install dependencies per app/env
       become_user: "{{ pm2_user }}"
       ansible.builtin.shell: >
-        CI=true {{ 'pnpm install --prod=false' if item.package_manager == 'pnpm' else 'npm install' }}
+        CI=true {{ 'pnpm install --prod=false --no-frozen-lockfile' if item.package_manager == 'pnpm' else 'npm install' }}
       args:
         chdir: "{{ item.repo_root }}"
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+
+    - name: Remove old backup directory if exists
+      ansible.builtin.file:
+        path: "{{ item.repo_root }}/.next.backup"
+        state: absent
       loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
