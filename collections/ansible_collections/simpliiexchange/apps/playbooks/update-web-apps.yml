@@ -138,14 +138,17 @@
         {{ 'pnpm install --prod=false' if item.package_manager == 'pnpm' else 'npm install' }}
       args:
         chdir: "{{ item.repo_root }}"
+      environment:
+        CI: "true"
       loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
 
-    - name: Remove .next build directory (for Next.js apps)
-      ansible.builtin.file:
-        path: "{{ item.repo_root }}/.next"
-        state: absent
+    - name: Backup existing .next directory before rebuild
+      ansible.builtin.command: >
+        mv {{ item.repo_root }}/.next {{ item.repo_root }}/.next.backup
+      args:
+        removes: "{{ item.repo_root }}/.next"
       loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
@@ -156,9 +159,23 @@
       ansible.builtin.command: "{{ item.build_command }}"
       args:
         chdir: "{{ item.repo_root }}"
+      environment:
+        CI: "true"
+        NODE_ENV: "production"
       loop: "{{ prepared_apps }}"
       loop_control:
         label: "{{ item.name }}-{{ item.env }}"
+      register: build_result
+
+    - name: Remove old backup after successful build
+      ansible.builtin.file:
+        path: "{{ item.repo_root }}/.next.backup"
+        state: absent
+      loop: "{{ prepared_apps }}"
+      loop_control:
+        label: "{{ item.name }}-{{ item.env }}"
+      when: build_result is succeeded
+      ignore_errors: yes
 
     - name: Ensure PM2 config directory exists
       ansible.builtin.file:
